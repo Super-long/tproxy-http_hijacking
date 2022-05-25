@@ -4,6 +4,10 @@ import (
 	"time"
 	"fmt"
 	"unsafe"
+	"math/rand"
+	"math"
+	"github.com/mjibson/go-dsp/fft"
+	"github.com/howeyc/crc16"
 )
 
 type StressCpuMethodInfo struct {
@@ -14,9 +18,92 @@ type StressCpuMethodInfo struct {
 var cpu_methods = []StressCpuMethodInfo {
 	{ "ackermann", 	stress_cpu_ackermann,	},
 	{ "bitops",		stress_cpu_bitops,		},
-	// { "collatz",	stress_cpu_collatz,		},
-	// { "crc16",		stress_cpu_crc16,		},
-	// { "factorial",	stress_cpu_factorial,	},
+	{ "collatz",	stress_cpu_collatz,		},
+	{ "crc16",		stress_cpu_crc16,		},
+	{ "factorial",	stress_cpu_factorial,	},
+	{ "fft", 		stress_cpu_fft,         },
+	//{ "pi", 		stress_cpu_pi,			}, 
+	{ "fibonacci",	stress_cpu_fibonacci,	},
+}
+
+func stress_cpu_factorial(name string) {
+	var f float64 = 1.0
+	var precision float64 = 1.0e-6
+
+	for n := 1; n < 150; n++ {
+		np1 := float64(n + 1)
+		fact := math.Round(math.Exp(math.Gamma(np1)))
+		var dn float64
+
+		f *= float64(n);
+
+		/* Stirling */
+		if (f - fact) / fact > precision {
+			fmt.Println("%s: Stirling's approximation of factorial(%d) out of range\n",
+				name, n);
+		}
+
+		/* Ramanujan */
+		dn = float64(n);
+		fact = math.SqrtPi * math.Pow((dn / float64(math.E)), dn)
+		fact *= math.Pow((((((((8 * dn) + 4)) * dn) + 1) * dn) + 1.0/30.0), (1.0/6.0));
+		if ((f - fact) / fact > precision) {
+			fmt.Println("%s: Ramanujan's approximation of factorial(%d) out of range\n",
+				name, n);
+		}
+	}
+}
+
+func stress_cpu_fft(name string) {
+	var buffer [128]float64
+	for i := 0; i < 128; i++ {
+		buffer[i] = float64(i%64)
+	}
+	for i := 0; i < 8; i++ {
+		fft.FFTReal(buffer[:])
+	}
+}
+
+func stress_cpu_fibonacci(name string) {
+	var fn_res uint64 = 0xa94fad42221f2702
+	var f1 uint64 = 1
+	var f2 uint64 = 1
+	var fn uint64 = 1
+
+	for !(fn & 0x8000000000000000 != 0) {
+		fn = f1 + f2
+		f1 = f2
+		f2 = fn
+	}
+
+	if fn_res != fn {
+		fmt.Printf("%s: fibonacci error detected, summation or assignment failure\n", name);
+	}
+}
+
+
+func stress_cpu_collatz(name string) {
+	var n uint64 = 989345275647
+	var i int
+	for i = 0; n != 1; i++ {
+		if n&1 != 0 {
+			n = (3 * n) + 1
+		} else {
+			n = n / 2
+		}
+	}
+
+	if i != 1348 {
+		fmt.Printf("%s: error detected, failed collatz progression\n", name)
+	}
+}
+
+func stress_cpu_crc16(name string) {
+	var randomBuffer [4096]byte
+	rand.Read(randomBuffer[:])
+	for i := 0; i < 8; i++ {
+		crc16.ChecksumIBM(randomBuffer[:])
+	}
 }
 
 func ackermann(m uint32, n uint32) uint32 {
@@ -126,7 +213,5 @@ func stress_cpu(interval time.Duration, cpuPercent float64) {
 }
 
 func main() {
-
 	stress_cpu(time.Duration(1000)*time.Second, 40)
-
 }
