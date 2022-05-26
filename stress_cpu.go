@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"unsafe"
 	"math/rand"
+	"math/big"
 	"math"
 	"github.com/mjibson/go-dsp/fft"
 	"github.com/howeyc/crc16"
@@ -22,7 +23,7 @@ var cpu_methods = []StressCpuMethodInfo {
 	{ "crc16",		stress_cpu_crc16,		},
 	{ "factorial",	stress_cpu_factorial,	},
 	{ "fft", 		stress_cpu_fft,         },
-	//{ "pi", 		stress_cpu_pi,			}, 
+	{ "pi", 		stress_cpu_pi,			}, 
 	{ "fibonacci",	stress_cpu_fibonacci,	},
 }
 
@@ -177,6 +178,45 @@ func stress_cpu_bitops(name string) {
 	}
 }
 
+func stress_cpu_pi(name string) {
+	digits := big.NewInt(1000)
+	unity := big.NewInt(0)
+	unity.Exp(big.NewInt(10), digits, nil)
+	pi := big.NewInt(0)
+	four := big.NewInt(4)
+	pi.Mul(four, pi.Sub(pi.Mul(four, arccot(5, unity)), arccot(239, unity)))
+}
+
+func arccot(x int64, unity *big.Int) *big.Int {
+	bigx := big.NewInt(x)
+	xsquared := big.NewInt(x*x)
+	sum := big.NewInt(0)
+	sum.Div(unity, bigx)
+	xpower := big.NewInt(0)
+	xpower.Set(sum)
+	n := int64(3)
+	zero := big.NewInt(0)
+	sign := false
+	
+	term := big.NewInt(0)
+	for {
+		xpower.Div(xpower, xsquared)
+		term.Div(xpower, big.NewInt(n))
+		if term.Cmp(zero) == 0 {
+			break
+		}
+		if sign {
+			sum.Add(sum, term)
+		} else {
+			sum.Sub(sum, term)
+		}
+		sign = !sign
+		n += 2
+	}
+	return sum
+}
+
+
 func stress_cpu_method(method int) {
 	cpu_methods[method].stress("lizhaolong");
 }
@@ -186,16 +226,25 @@ func stress_cpu(interval time.Duration, cpuPercent float64) {
 	startTime := time.Now().UnixNano()
 	nanoInterval := int64(interval/time.Nanosecond)
 	fmt.Printf("[%d]=========nanoInterval\n", nanoInterval)
+	time_exec := make(map[string]time.Duration, 8)
+	iterator := 0
 	for {
 		if time.Now().UnixNano() - startTime > nanoInterval {
 			break
 		}
 
 		startTime1 := time.Now().UnixNano()
+		iterator++
 		// Loops and methods may be specified later.
 		for i := 0; i < len(cpu_methods); i++ {
+			t1 := time.Now()
 			stress_cpu_method(i)
+			t2 := time.Now()
+			time_exec[cpu_methods[i].name] += t2.Sub(t1)
+			//fmt.Println(cpu_methods[i].name, t2.Sub(t1))
+
 		}
+		//fmt.Println("=============================")
 		endTime1 := time.Now().UnixNano()
 		//fmt.Println(startTime1, endTime1, cpuPercent)
 		delay := ((100 - cpuPercent) * float64(endTime1 - startTime1) / cpuPercent)
@@ -210,8 +259,13 @@ func stress_cpu(interval time.Duration, cpuPercent float64) {
 			bias = float64(endTime2 - startTime2) - delay
 		}
 	}
+	for k, _ := range time_exec {
+		time_exec[k] /= time.Duration(iterator)
+		fmt.Println(k, time_exec[k])
+	}
+	fmt.Println(iterator)
 }
 
 func main() {
-	stress_cpu(time.Duration(1000)*time.Second, 40)
+	stress_cpu(time.Duration(20)*time.Second, 40)
 }
